@@ -5,8 +5,11 @@ openai.api_key = "sk-proj-wLb-VJDsZqFZdJr65Kjsa8rIseHohKRyYlzX_4gJx1VnvXDR26AsSA
 
 app = Flask(__name__)
 
-@app.route('/', methods=['POST'])
+@app.route('/', methods=['GET', 'POST'])
 def sms_reply():
+    if request.method == 'GET':
+        return "✅ Server is running."
+
     data = request.get_json()
     msg = data.get("message")
     sender = data.get("sender")
