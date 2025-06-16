@@ -3,39 +3,35 @@ import openai
 
 app = Flask(__name__)
 
-# 🔑 Replace with your actual OpenAI API key
-openai.api_key = "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"
+# 🔑 Your OpenAI API Key
+openai.api_key = "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"  # Replace with your real key
 
-@app.route("/", methods=["GET"])
-def sms_to_ai():
-    sender = request.args.get("sender")
-    message = request.args.get("message")
+@app.route('/', methods=['GET'])
+def sms_chatgpt():
+    sender = request.args.get('sender')
+    message = request.args.get('message')
 
-    if not sender or not message:
-        return jsonify({"reply": "❌ Missing sender or message."})
+    if not message:
+        return jsonify({'reply': "No message received."})
 
     try:
-        # Get reply from ChatGPT
-        chat = openai.ChatCompletion.create(
+        # 💬 ChatGPT call
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
+                {"role": "system", "content": "Reply briefly in 1 SMS-friendly message."},
                 {"role": "user", "content": message}
             ],
-            max_tokens=100,
-            temperature=0.7,
+            max_tokens=60,  # keep short for SMS
+            temperature=0.7
         )
-        reply_text = chat.choices[0].message.content.strip()
+
+        reply = response['choices'][0]['message']['content'].strip()
+        return jsonify({'reply': reply})
+
     except Exception as e:
-        reply_text = f"⚠️ Error: {e}"
+        return jsonify({'reply': f"Error: {str(e)}"})
 
-    return jsonify({
-        "to": sender,
-        "reply": reply_text
-    })
+if __name__ == '__main__':
+    app.run()
 
-@app.route("/health", methods=["GET"])
-def health_check():
-    return "✅ Server is running"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
