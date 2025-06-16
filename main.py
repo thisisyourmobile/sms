@@ -4,7 +4,7 @@ from openai import OpenAI  # Updated import
 app = Flask(__name__)
 
 # Initialize OpenAI client
-client = OpenAI(api_key="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")  # Replace with your key
+client = OpenAI(api_key="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")  # Replace with your key
 
 @app.route('/', methods=['GET'])
 def sms_chatgpt():
