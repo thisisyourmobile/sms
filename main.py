@@ -1,10 +1,10 @@
 from flask import Flask, request, jsonify
-import openai
+from openai import OpenAI  # Updated import
 
 app = Flask(__name__)
 
-# 🔑 Your OpenAI API Key (not recommended for production)
-openai.api_key = "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"  # Replace with your real key
+# Initialize OpenAI client
+client = OpenAI(api_key="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")  # Replace with your key
 
 @app.route('/', methods=['GET'])
 def sms_chatgpt():
@@ -15,23 +15,22 @@ def sms_chatgpt():
         return jsonify({'reply': "No message received."})
 
     try:
-        # 💬 ChatGPT call
-        response = openai.ChatCompletion.create(
+        # Updated ChatGPT call (new API syntax)
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Reply briefly in 1 SMS-friendly message."},
                 {"role": "user", "content": message}
             ],
-            max_tokens=60,  # keep short for SMS
+            max_tokens=60,
             temperature=0.7
         )
 
-        reply = response['choices'][0]['message']['content'].strip()
+        reply = response.choices[0].message.content.strip()
         return jsonify({'reply': reply})
 
     except Exception as e:
         return jsonify({'reply': f"Error: {str(e)}"})
 
 if __name__ == '__main__':
-    # Run on all available IPs (0.0.0.0) and port 5000
     app.run(host='0.0.0.0', port=5000)
