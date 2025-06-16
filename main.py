@@ -3,7 +3,7 @@ import openai
 
 app = Flask(__name__)
 
-# 🔑 Your OpenAI API Key
+# 🔑 Your OpenAI API Key (not recommended for production)
 openai.api_key = "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"  # Replace with your real key
 
 @app.route('/', methods=['GET'])
@@ -33,5 +33,5 @@ def sms_chatgpt():
         return jsonify({'reply': f"Error: {str(e)}"})
 
 if __name__ == '__main__':
+    # Run on all available IPs (0.0.0.0) and port 5000
     app.run(host='0.0.0.0', port=5000)
-
