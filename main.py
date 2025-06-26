@@ -2,83 +2,149 @@ import os
 import requests
 import time
 import json
-from colorama import init, Fore, Style
 import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from flask import Flask, jsonify
-import threading
 
-# Initialize colorama and Flask
-init(autoreset=True)
-app = Flask(__name__)
+# Read and parse the query.txt file
+with open('query.txt', 'r') as file:
+    lines = file.readlines()
+authorizations = [line.strip() for line in lines]
 
-# ========== CONFIGURATION ========== #
-ACTIVE_DURATION = timedelta(hours=1)    # 1 hour active
-REST_DURATION = timedelta(minutes=30)   # 30 minutes rest
-MIN_EGGS_FOR_SALE = 100                 # Minimum eggs to trigger sale
-FARM_CAPACITY_THRESHOLD = 90            # Percentage to trigger capacity upgrade
-
-# ========== BOT CORE FUNCTIONS ========== #
-def get_random_color():
-    """Return a random console color"""
-    colors = [Fore.GREEN, Fore.YELLOW, Fore.BLUE, Fore.MAGENTA, Fore.CYAN]
-    return random.choice(colors)
-
-def load_authorizations():
-    """Load authorization tokens from query.txt"""
-    with open('query.txt', 'r') as file:
-        return [line.strip() for line in file if line.strip()]
-
-# Global variables
-authorizations = load_authorizations()
 previous_results = {}
-upgrade_counts = {"egg_value": 0, "laying_rate": 0, "farm_capacity": 0}
-next_spin_time = datetime.now()
-last_update = datetime.now()
-
-# ========== API OPERATIONS ========== #
-def make_api_request(url, auth, method='POST', data=None):
-    """Generic API request handler"""
-    headers = {
-        'authorization': auth,
-        'content-type': 'application/octet-stream',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
-    }
-    try:
-        if method == 'POST':
-            if data:
-                return requests.post(url, headers=headers, data=json.dumps(data))
-            return requests.post(url, headers=headers)
-        return requests.get(url, headers=headers)
-    except Exception as e:
-        print(f"{Fore.RED}API Error: {e}")
-        return None
+upgrade_counts = {
+    "egg_value": 0,
+    "laying_rate": 0
+}
 
 def spin_wheel(auth, index):
-    """Handle wheel spin and reward claiming"""
-    global next_spin_time
-    response = make_api_request('https://api.chickcoop.io/v2/wheel/spin', auth, data={"mode": "free"})
+    headers = {
+        'authorization': auth,
+        'origin': 'https://game.chickcoop.io',
+        'referer': 'https://game.chickcoop.io/',
+        'user-agent': 'Mozilla/5.0'
+    }
+    data = json.dumps({"mode": "free"})
+    response = requests.post('https://api.chickcoop.io/v2/wheel/spin', headers=headers, data=data)
     
-    if response and response.status_code == 200:
-        wheel_state = response.json().get('data', {}).get('wheelState', {})
+    if response.status_code == 200:
+        response_data = response.json()
+        wheel_state = response_data.get('data', {}).get('wheelState', {})
+        
         if wheel_state.get('availableReward'):
             reward = wheel_state['availableReward']
-            print(f"{Fore.CYAN}Akun {index}: Won {reward['amount']} {reward['text']}")
-            make_api_request('https://api.chickcoop.io/wheel/claim', auth)
+            print(f"[Akun {index+1}] Wheel reward: {reward['text']} | {reward['type']} | {reward['amount']}")
+            claim = requests.post('https://api.chickcoop.io/wheel/claim', headers=headers)
+            if claim.status_code == 200:
+                print(f"[Akun {index+1}] Reward claimed.")
+            else:
+                print(f"[Akun {index+1}] Claim failed.")
         else:
-            next_spin = datetime.fromtimestamp(wheel_state.get('nextTimeFreeSpin', 0) / 1000)
-            print(f"{Fore.YELLOW}Akun {index}: Next spin at {next_spin.strftime('%H:%M')}")
+            print(f"[Akun {index+1}] No reward available.")
         return True
     return False
 
-# [Rest of your functions remain unchanged...]
+def claim_gift(auth):
+    headers = {'authorization': auth}
+    r = requests.post('https://api.chickcoop.io/gift/claim', headers=headers)
+    return r.status_code == 200 and r.json().get('ok')
 
-# ========== APPLICATION STARTUP ========== #
-if __name__ == "__main__":
-    # Start bot in background thread
-    threading.Thread(target=bot_cycle, daemon=True).start()
-    
-    # Start Flask web server
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+def upgrade_laboratory(auth, research_type):
+    headers = {'authorization': auth}
+    data = json.dumps({"researchType": research_type})
+    r = requests.post('https://api.chickcoop.io/laboratory/research', headers=headers, data=data)
+    return r.json()
+
+def upgrade_farm(auth):
+    headers = {'authorization': auth}
+    return requests.post('https://api.chickcoop.io/discovery/upgrade-eggs', headers=headers).json()
+
+def sell_eggs(auth, number):
+    headers = {'authorization': auth}
+    data = json.dumps({"numberOfEggs": number})
+    r = requests.post('https://api.chickcoop.io/user/sell-eggs', headers=headers, data=data)
+    return r.status_code == 200
+
+def fetch_and_print_user_data(auth, index):
+    headers = {'authorization': auth}
+    try:
+        r = requests.post('https://api.chickcoop.io/hatch/manual', headers=headers)
+        if r.status_code == 401:
+            return f"[Akun {index+1}] Authorization failed."
+
+        data = r.json()['data']
+        profile = data['profile']
+        chickens = data['chickens']
+        eggs = data['eggs']
+        cash = data['cash']
+        gem = data['gem']
+        level = data['discovery']['level']
+        ready_upgrade = data['discovery']['availableToUpgrade']
+        farm_capacity = data['farmCapacity']['capacity']
+
+        chest_count = previous_results.get('chest_count', 0)
+        if claim_gift(auth):
+            chest_count += 1
+            previous_results['chest_count'] = chest_count
+
+        if upgrade_laboratory(auth, "laboratory.regular.eggValue").get("ok"):
+            upgrade_counts["egg_value"] += 1
+        if upgrade_laboratory(auth, "laboratory.regular.layingRate").get("ok"):
+            upgrade_counts["laying_rate"] += 1
+
+        chicken_count = int(chickens['quantity'])
+        percentage = (chicken_count / farm_capacity) * 100
+
+        result = (
+            f"[Akun {index+1}] Name: {profile['username']} | "
+            f"Chickens: {chicken_count} ({percentage:.0f}%) | "
+            f"Level: {level} | Eggs: {int(eggs['quantity'])} | "
+            f"Cash: {cash:,} | Gems: {gem} | Gifts: {chest_count} | "
+            f"Upgrades - Egg: {upgrade_counts['egg_value']}, Lay: {upgrade_counts['laying_rate']}"
+        )
+
+        if chicken_count >= farm_capacity * 0.9:
+            upgrade_laboratory(auth, "laboratory.regular.farmCapacity")
+        if ready_upgrade:
+            upgrade_farm(auth)
+        if int(eggs['quantity']) > 100:
+            sell_eggs(auth, int(eggs['quantity']))
+
+        return result
+    except Exception as e:
+        return f"[Akun {index+1}] Error: {str(e)}"
+
+# === Main bot loop with timing ===
+RUN_DURATION = timedelta(hours=1)
+REST_DURATION = timedelta(minutes=30)
+
+print("🔁 Bot started — will run for 1 hour and sleep 30 minutes in cycles...\n")
+
+while True:
+    run_start = datetime.now()
+    run_end = run_start + RUN_DURATION
+    next_spin_time = datetime.now()
+
+    while datetime.now() < run_end:
+        results = []
+        now = datetime.now()
+
+        if now >= next_spin_time:
+            for i, auth in enumerate(authorizations):
+                spin_wheel(auth, i)
+            next_spin_time = now + timedelta(hours=1)
+
+        with ThreadPoolExecutor(max_workers=len(authorizations)) as executor:
+            futures = [executor.submit(fetch_and_print_user_data, auth, i) for i, auth in enumerate(authorizations)]
+            for future in futures:
+                result = future.result()
+                if result:
+                    results.append(result)
+
+        if results:
+            print("\n".join(results), flush=True)
+
+        time.sleep(5)
+
+    print(f"\n🛌 Resting for 30 minutes... [{datetime.now().strftime('%H:%M:%S')}]\n", flush=True)
+    time.sleep(REST_DURATION.total_seconds())
