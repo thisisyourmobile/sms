@@ -1,312 +1,133 @@
 import os
-import requests
 import time
 import json
-from colorama import init, Fore, Style
 import random
-from concurrent.futures import ThreadPoolExecutor
+import threading
 from datetime import datetime, timedelta
-init(autoreset=True)
+from flask import Flask, Response
+import requests
+from concurrent.futures import ThreadPoolExecutor
 
+app = Flask(__name__)
 
-# Function to get random color
-def get_random_color():
-    colors = [Fore.GREEN, Fore.YELLOW, Fore.BLUE, Fore.MAGENTA, Fore.CYAN]
-    return random.choice(colors)
+# ✅ Load authorization tokens
+with open("query.txt", "r") as f:
+    authorizations = [line.strip() for line in f if line.strip()]
 
-# Paste your tokens directly below (1 per line, as string)
-authorizations = [
-    "user=%7B%22id%22%3A850782772%2C%22first_name%22%3A%22White%22%2C%22last_name%22%3A%22Flavour%22%2C%22username%22%3A%22bujairkc%22%2C%22language_code%22%3A%22en%22%2C%22allows_write_to_pm%22%3Atrue%2C%22photo_url%22%3A%22https%3A%5C%2F%5C%2Ft.me%5C%2Fi%5C%2Fuserpic%5C%2F320%5C%2FYZ8_0H1JV_sqLc1WpBm2-18WuXuN3_P8XJC_ukzARH0.svg%22%7D&chat_instance=3481975270667214150&chat_type=sender&auth_date=1751111134&signature=Sr4CDkQcnAA81DajiqVkn4S_CsKlUlBAKa1rFs05WVgw2eqTRqKOZkIzv1P24Zk0wbrA7qKTxlhqee2eK0yZAg&hash=5508e84754c24c0fd03fe43b2733a4eb5927f0f631546ac5a6d8743d2c047a7a",
-]
-# Extract authorization data from each line
-authorizations = [line.strip() for line in lines]
+status_log = []
+next_phase_time = None
+is_resting = False
 
-# Store previous results
-previous_results = {}
+def get_headers(auth):
+    return {
+        'accept': '*/*',
+        'authorization': auth,
+        'content-type': 'application/octet-stream',
+        'origin': 'https://game.chickcoop.io',
+        'referer': 'https://game.chickcoop.io/',
+        'user-agent': 'Mozilla/5.0'
+    }
+
 def spin_wheel(auth, index):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
+    headers = get_headers(auth)
     data = json.dumps({"mode": "free"})
-    response = requests.post('https://api.chickcoop.io/v2/wheel/spin', headers=headers, data=data)
-    
-    if response.status_code == 200:
-        response_data = response.json()
-        wheel_state = response_data.get('data', {}).get('wheelState', {})
-        
-        if wheel_state.get('availableReward'):
-            reward = wheel_state['availableReward']
-            print(f"Akun {index} You got {reward['text']} | {reward['type']} | {reward['amount']}")
-            
-            # Claim the reward
-            claim_response = requests.post('https://api.chickcoop.io/wheel/claim', headers=headers)
-            if claim_response.status_code == 200:
-                print(f"Akun {index} Reward claimed successfully")
-            else:
-                print(f"Akun {index} Failed to claim reward")
-        else:
-            next_spin_time = wheel_state.get('nextTimeFreeSpin')
-            if next_spin_time:
-                next_spin_time = datetime.fromtimestamp(next_spin_time / 1000)
-                time_diff = next_spin_time - datetime.now()
-                hours, remainder = divmod(time_diff.seconds, 3600)
-                minutes, seconds = divmod(remainder, 60)
-                print(f"Akun {index} Next spin in {hours} hours {minutes} minutes {seconds} seconds")
-        return True
-    return False
+    try:
+        r = requests.post('https://api.chickcoop.io/v2/wheel/spin', headers=headers, data=data)
+        if r.status_code == 200:
+            reward = r.json()['data']['wheelState'].get('availableReward')
+            if reward:
+                requests.post('https://api.chickcoop.io/wheel/claim', headers=headers)
+                return f"[Akun {index+1}] 🎡 Wheel: {reward['text']} | {reward['type']} | {reward['amount']}"
+    except Exception as e:
+        return f"[Akun {index+1}] ❌ Spin error: {e}"
+    return None
 
-def claim_gift(auth):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-length': '0',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
-    response = requests.post('https://api.chickcoop.io/gift/claim', headers=headers)
-    if response.status_code == 200:
-        data = response.json()
-        if data.get('ok'):
-            return True
-    return False
+def claim_gift(auth, index):
+    headers = get_headers(auth)
+    try:
+        r = requests.post('https://api.chickcoop.io/gift/claim', headers=headers)
+        if r.status_code == 200 and r.json().get('ok'):
+            return f"[Akun {index+1}] 🎁 Gift claimed successfully"
+        return f"[Akun {index+1}] 🎁 No gift available"
+    except Exception as e:
+        return f"[Akun {index+1}] ❌ Gift error: {e}"
 
-def upgrade_laboratory(auth, research_type):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126", "Microsoft Edge WebView2";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
-    data = json.dumps({"researchType": research_type})
-    response = requests.post('https://api.chickcoop.io/laboratory/research', headers=headers, data=data)
-    return response.json()
+def fetch_user(auth, index):
+    headers = get_headers(auth)
+    try:
+        r = requests.post("https://api.chickcoop.io/hatch/manual", headers=headers)
+        if r.status_code == 401:
+            return f"[Akun {index+1}] ❌ Authorization failed"
+        data = r.json()['data']
+        chickens = data['chickens']['quantity']
+        eggs = data['eggs']['quantity']
+        cash = data['cash']
+        gem = data['gem']
+        level = data['discovery']['level']
+        name = data['profile']['username']
+        farm_capacity = data['farmCapacity']['capacity']
+        if eggs > 100:
+            requests.post('https://api.chickcoop.io/user/sell-eggs',
+                          headers=headers, data=json.dumps({"numberOfEggs": eggs}))
+        return (f"[Akun {index+1}] 🐔 {name} | Level: {level} | Chickens: {chickens} | "
+                f"Eggs: {eggs} | Cash: {cash} | Gems: {gem}")
+    except Exception as e:
+        return f"[Akun {index+1}] ❌ Error: {e}"
 
+def bot_loop():
+    global next_phase_time, is_resting
+    print("🔁 Bot started — 1 hour active, 30 minutes rest cycles...\n")
 
-def upgrade_farm(auth):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126", "Microsoft Edge WebView2";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
-
-    response = requests.post('https://api.chickcoop.io/discovery/upgrade-eggs', headers=headers )
-    return response.json()
-
-
-# Function to sell eggs
-def sell_eggs(auth, number_of_eggs):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126", "Microsoft Edge WebView2";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
-    data = json.dumps({"numberOfEggs": number_of_eggs})
-    response = requests.post('https://api.chickcoop.io/user/sell-eggs', headers=headers, data=data)
-    return response.status_code == 200
-
-# Store previous results and upgrade counts
-previous_results = {}
-upgrade_counts = {
-    "egg_value": 0,
-    "laying_rate": 0
-}
-
-def fetch_and_print_user_data(auth, index):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': auth,
-        'cache-control': 'no-cache',
-        'content-length': '0',
-        'content-type': 'application/octet-stream',
-        'origin': 'https://game.chickcoop.io',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': 'https://game.chickcoop.io/',
-        'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126", "Microsoft Edge WebView2";v="126"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0'
-    }
-    
     while True:
-        try:
-            time.sleep(2)
-            response = requests.post('https://api.chickcoop.io/hatch/manual', headers=headers)
-            
-            if response.status_code == 401:
-                return Fore.RED + f"Authorization failed for Akun {index + 1}"
+        # === ACTIVE PHASE (1 hour) ===
+        is_resting = False
+        next_phase_time = datetime.now() + timedelta(hours=1)
 
-            data = response.json()
+        while datetime.now() < next_phase_time:
+            logs = []
 
-            profile = data['data']['profile']
-            chickens = data['data']['chickens']
-            eggs = data['data']['eggs']
-            cash = data['data']['cash']
-            gem = data['data']['gem']
-            level = data['data']['discovery']['level']
-            ready_upgrade =  data['data']['discovery']['availableToUpgrade']
-            farm_capacity = data['data']['farmCapacity']['capacity']
+            for idx, auth in enumerate(authorizations):
+                # Spin wheel
+                result = spin_wheel(auth, idx)
+                if result:
+                    logs.append(result)
 
-            if claim_gift(auth):
-                chest_count = previous_results.get('chest_count', 0) + 1
-                previous_results['chest_count'] = chest_count
-            else:
-                chest_count = previous_results.get('chest_count', 0)
-          
-            color = get_random_color()
-            formatted_cash = f"{cash:,.0f}".replace(",", ".")
-            
-            # Upgrade laboratory after hatching
-            egg_value_upgrade = upgrade_laboratory(auth, "laboratory.regular.eggValue")
-            laying_rate_upgrade = upgrade_laboratory(auth, "laboratory.regular.layingRate")
-            
-            if egg_value_upgrade['ok'] and laying_rate_upgrade['ok']:
-                upgrade_counts["egg_value"] += 1
-                upgrade_counts["laying_rate"] += 1
-            
-            upgrade_result = (
-                f"Egg {Style.BRIGHT}{color}{upgrade_counts['egg_value']}, "
-                f"Laying {Style.BRIGHT}{color}{upgrade_counts['laying_rate']}"
-            )
-            
-            chicken_quantity = int(chickens['quantity'])
-            chicken_percentage = (chicken_quantity / farm_capacity) * 100
-            
-            result = (
-                f"Akun {Style.BRIGHT}{color}{index + 1}{Style.RESET_ALL} | "
-                f"Ayam {Style.BRIGHT}{color}{chicken_quantity} ({chicken_percentage:.0f}%){Style.RESET_ALL} | "
-                f"Lvl {Style.BRIGHT}{color}{level}{Style.RESET_ALL} | "
-                f"Telur {Style.BRIGHT}{color}{int(eggs['quantity'])}{Style.RESET_ALL} | "
-                f"Cash {Style.BRIGHT}{color}{formatted_cash}{Style.RESET_ALL} | "
-                f"Gems {Style.BRIGHT}{color}{gem}{Style.RESET_ALL} | "
-                f"Gift: {Style.BRIGHT}{color}{chest_count} | "
-                f"Up: {Style.BRIGHT}{color}{upgrade_result} |{Style.RESET_ALL} "
-                f"Name: {Style.BRIGHT}{color}{profile['username']}{Style.RESET_ALL}"
-            )
-            
-            if chicken_percentage >= 90:
-                upgrade_laboratory(auth,"laboratory.regular.farmCapacity")
+                # Claim gift
+                gift_result = claim_gift(auth, idx)
+                logs.append(gift_result)
 
-            if ready_upgrade == True:
-                upgrade_farm(auth)
-            # Check if the result is different from the previous one
-            if previous_results.get(index) != result:
-                previous_results[index] = result
-                # Sell eggs only if the quantity is more than 1000
-                if int(eggs['quantity']) > 100:
-                    sell_eggs(auth, int(eggs['quantity']))
-                return result
-            return None
-        
-        except Exception as e:
-            print(Fore.RED + f"Error fetching data for Akun {index + 1}: {e}")
-            time.sleep(5)  # Wait before retrying
+            with ThreadPoolExecutor() as exec:
+                futures = [exec.submit(fetch_user, auth, idx) for idx, auth in enumerate(authorizations)]
+                for f in futures:
+                    result = f.result()
+                    if result:
+                        logs.append(result)
 
+            status_log.clear()
+            status_log.extend(logs)
+            print("\n".join(logs), flush=True)
+            time.sleep(10)
 
-next_spin_time = datetime.now()
+        # === REST PHASE (30 minutes) ===
+        is_resting = True
+        next_phase_time = datetime.now() + timedelta(minutes=30)
+        status_log.clear()
+        rest_msg = f"🛌 Bot is resting until {next_phase_time.strftime('%H:%M:%S')}"
+        print(rest_msg, flush=True)
+        status_log.append(rest_msg)
 
-while True:
-    results = []
-    current_time = datetime.now()
-    
-    # Check if it's time to spin the wheel
-    if current_time >= next_spin_time:
-        for index, auth in enumerate(authorizations):
-            spin_wheel(auth, index)
-        next_spin_time = current_time + timedelta(hours=1)
-    
-    # Use ThreadPoolExecutor to make requests concurrently
-    with ThreadPoolExecutor(max_workers=len(authorizations)) as executor:
-        futures = [executor.submit(fetch_and_print_user_data, auth, index) for index, auth in enumerate(authorizations)]
-        for future in futures:
-            result = future.result()  # Wait for all threads to complete
-            if result:
-                results.append(result)
-    
-    if results:
-        # Clear the previous output
-        print("\033c", end="")  # ANSI escape code to clear the screen
-        # Print all results at once
-        print("\n".join(results), end="\r", flush=True)
-    
-    time.sleep(2)  # Adjust sleep time as needed
+        while datetime.now() < next_phase_time:
+            time.sleep(5)
+
+@app.route("/")
 def homepage():
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     rest_status = "✅ Running" if not is_resting else "🛌 Resting"
-    remaining = (next_rest_time - datetime.now()).seconds // 60 if next_rest_time else 0
+    remaining = (next_phase_time - datetime.now()).seconds // 60 if next_phase_time else 0
     html = f"<h2>{rest_status}</h2><p>⏱ Next phase in: {remaining} minutes</p><pre>{chr(10).join(status_log)}</pre>"
     return Response(html, mimetype="text/html")
 
-# Start bot in background thread
+# Start bot in background
 threading.Thread(target=bot_loop, daemon=True).start()
 
 if __name__ == "__main__":
