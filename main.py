@@ -14,10 +14,11 @@ def get_random_color():
     colors = [Fore.GREEN, Fore.YELLOW, Fore.BLUE, Fore.MAGENTA, Fore.CYAN]
     return random.choice(colors)
 
-# Read and parse the query.txt file
-with open('query.txt', 'r') as file:
-    lines = file.readlines()
-
+# Paste your tokens directly below (1 per line, as string)
+authorizations = [
+    "
+user=%7B%22id%22%3A850782772%2C%22first_name%22%3A%22White%22%2C%22last_name%22%3A%22Flavour%22%2C%22username%22%3A%22bujairkc%22%2C%22language_code%22%3A%22en%22%2C%22allows_write_to_pm%22%3Atrue%2C%22photo_url%22%3A%22https%3A%5C%2F%5C%2Ft.me%5C%2Fi%5C%2Fuserpic%5C%2F320%5C%2FYZ8_0H1JV_sqLc1WpBm2-18WuXuN3_P8XJC_ukzARH0.svg%22%7D&chat_instance=3481975270667214150&chat_type=sender&auth_date=1751111134&signature=Sr4CDkQcnAA81DajiqVkn4S_CsKlUlBAKa1rFs05WVgw2eqTRqKOZkIzv1P24Zk0wbrA7qKTxlhqee2eK0yZAg&hash=5508e84754c24c0fd03fe43b2733a4eb5927f0f631546ac5a6d8743d2c047a7a",
+]
 # Extract authorization data from each line
 authorizations = [line.strip() for line in lines]
 
