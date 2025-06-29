@@ -69,7 +69,7 @@ def fetch_user(auth, index):
         if eggs > 100:
             requests.post('https://api.chickcoop.io/user/sell-eggs',
                           headers=headers, data=json.dumps({"numberOfEggs": eggs}))
-        return (f"[Akun {index+1}] 🐔 {name} | Level: {level} | Chickens: {chickens} | "
+        return (f"[Accound {index+1}] 🐔 {name} | Level: {level} | Chickens: {chickens} | "
                 f"Eggs: {eggs} | Cash: {cash} | Gems: {gem}")
     except Exception as e:
         return f"[Akun {index+1}] ❌ Error: {e}"
@@ -110,7 +110,7 @@ def bot_loop():
 
         # === REST PHASE (30 minutes) ===
         is_resting = True
-        next_phase_time = datetime.now() + timedelta(minutes=30)
+        next_phase_time = datetime.now() + timedelta(minutes=15)
         status_log.clear()
         rest_msg = f"🛌 Bot is resting until {next_phase_time.strftime('%H:%M:%S')}"
         print(rest_msg, flush=True)
